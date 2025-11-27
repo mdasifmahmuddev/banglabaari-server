@@ -1,24 +1,40 @@
 const mongoose = require('mongoose');
 
+let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
 const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+  if (cached.conn) {
+    return cached.conn;
+  }
+
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+    };
+
+    cached.promise = mongoose.connect(process.env.MONGODB_URI, opts).then((mongoose) => {
+      console.log(`MongoDB Connected: ${mongoose.connection.host}`);
+      return mongoose;
     });
-
-    console.log(` MongoDB Connected: ${conn.connection.host}`);
-    console.log(` Database: ${conn.connection.name}`);
-
-  
-    await createInitialAdmin();
-
-  } catch (error) {
-    console.error(`❌ MongoDB Connection Error: ${error.message}`);
-    process.exit(1);
   }
-};
 
+  try {
+    cached.conn = await cached.promise;
+    await createInitialAdmin();
+  } catch (error) {
+    console.error(`MongoDB Connection Error: ${error.message}`);
+    cached.promise = null;
+    throw error;
+  }
+
+  return cached.conn;
+};
 
 const createInitialAdmin = async () => {
   try {
@@ -36,7 +52,7 @@ const createInitialAdmin = async () => {
         role: 'superadmin'
       });
       
-      console.log(' Initial admin user created');
+      console.log('Initial admin user created');
     }
   } catch (error) {
     console.error('Error creating initial admin:', error.message);
@@ -44,3 +60,5 @@ const createInitialAdmin = async () => {
 };
 
 module.exports = connectDB;
+ 
+ 
